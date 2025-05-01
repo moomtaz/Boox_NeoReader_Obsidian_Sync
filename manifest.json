@@ -4,7 +4,7 @@
   "version": "0.1.2",                      
   "minAppVersion": "0.15.0",                
   "main": "main.js",                        
-  "description":"Automatically import Boox highlights and handwritten notes into Obsidian with citation styles.",
+  "description":"Automatically import Boox highlights and handwritten notes into Obsidian with citation styles When you share to Obsidian.",
   "author": "Muhammad Saadiq",
   "authorUrl": "https://github.com/moomtaz/Boox_NeoReader_Obsidian_Sync",
   "isDesktopOnly": false                    
