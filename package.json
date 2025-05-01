@@ -1,0 +1,19 @@
+{
+  "name": "boox-sync",
+  "version": "0.1.0",
+  "description": "Automatically import Boox highlights and handwritten notes into Obsidian with citation styles.",
+  "author": "Muhammad Saadiq",
+  "license": "MIT",
+  "scripts": {
+    "dev": "rollup --config rollup.config.js --watch",
+    "build": "rollup --config rollup.config.js",
+    "deploy": "npm run build && cp main.js /Users/muhammad_saadiq/Documents/@L-P/Obsidian/ArRahman/.obsidian/plugins/boox-sync/ && cp manifest.json /Users/muhammad_saadiq/Documents/@L-P/Obsidian/ArRahman/.obsidian/plugins/boox-sync/"
+  },
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "^16.0.1",
+    "obsidian": "latest",
+    "rollup": "^2.79.1",
+    "rollup-plugin-typescript2": "^0.31.2",
+    "typescript": "^5.2.2"
+  }
+}
