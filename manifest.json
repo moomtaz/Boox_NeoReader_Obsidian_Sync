@@ -1,10 +1,22 @@
 {
   "id": "boox-sync",
   "name": "Boox Sync",
-  "version": "0.1.0",
+  "version": "0.1.2",        // ← bump this!
   "minAppVersion": "0.15.0",
+  "main": "main.js",
   "description": "Automatically import Boox highlights and handwritten notes into Obsidian with citation styles.",
   "author": "Muhammad Saadiq",
-  "authorUrl": "https://github.com/moomtaz/NeoReader-Sync",
+  "authorUrl": "https://github.com/moomtaz/Boox_NeoReader_Obsidian_Sync",
+  "isDesktopOnly": true
+{
+  "id": "boox-sync",
+  "name": "Boox Sync",
+  "version": "0.1.2",       
+  "minAppVersion": "0.15.0",
+  "main": "main.js",
+  "description": "Automatically import Boox highlights and handwritten notes into Obsidian with citation styles.",
+  "author": "Muhammad Saadiq",
+  "authorUrl": "https://github.com/moomtaz/Boox_NeoReader_Obsidian_Sync",
   "isDesktopOnly": true
 }
+
