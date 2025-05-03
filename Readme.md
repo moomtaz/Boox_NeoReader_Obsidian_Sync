@@ -1,70 +1,130 @@
-# Boox NeoReader Obsidian Sync
 
-This Obsidian plugin automatically imports Boox NeoReader highlights and annotations (from `.txt` files) into your vault, formats them using your chosen citation style, and enhances them with metadata from Google Books.
+# Boox Sync – NeoReader to Obsidian Importer
 
-## ✨ Features
+Automatically import highlights and handwritten notes from your Boox device into Obsidian with rich formatting, YAML metadata, and callout annotations.
 
-- ✅ Auto-watch a Boox sync folder for new highlight `.txt` files
-- ✅ Parses and deduplicates highlights
-- ✅ Formats with MLA, APA, or Chicago citations
-- ✅ Annotate with Obsidian callouts based on prefix
-- ✅ Auto-fetch book metadata (ISBN, publisher, description, etc.)
-- ✅ Customizable output folders
-- ✅ Optional support for handwritten PDF import
-- ✅ Google Books integration
-- ✅ Automatic file renaming and template filling
+📚 Supports citation styles (APA, Chicago, MLA)  
+🖊️ Detects and formats callouts from your annotations  
+📄 Auto-moves highlights and PDFs to matching Obsidian notes  
+🧠 Smart deduplication & update logic  
+📦 Just share from NeoReader → Obsidian — the plugin does the rest!
+
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-Moomtaz-yellow.svg?style=for-the-badge&logo=buymeacoffee)](https://www.buymeacoffee.com/Moomtaz)
+
+---
 
 ## 🔧 Installation
 
-1. Clone or download this repository.
-2. Copy the folder into your Obsidian plugins directory:~/.obsidian/plugins/
-3. Enable the plugin in Obsidian’s settings.
+1. Download the latest release from the [Releases page](https://github.com/moomtaz/Boox_NeoReader_Obsidian_Sync/releases)
+2. Extract and place the plugin folder inside:
 
-## ⚙️ Settings
+YourVault/.obsidian/plugins/boox-sync
 
-- **Boox Watch Folder**: Folder to monitor for `.txt` highlight files.
-- **Output Folder**: Where initial markdown book files are created.
-- **Final Folder**: Where finished notes are moved.
-- **Citation Style**: MLA, APA, or Chicago.
-- **Note Naming**: `Title - Author` or `Title Only`.
-- **PDF Import**: Optionally import handwritten PDFs from Boox.
-- **Online Metadata**: Use Google Books to enhance notes.
-- **Scan Interval**: How often to poll the Boox folder (in seconds).
+3. In Obsidian, go to **Settings > Community plugins > Enable Boox Sync**
 
-## 📝 Highlight Format Example
+---
 
-Book Title 2025-04-30 14:20 | Page No.: 25 This is a highlighted quote. 【Annotation】! Key insight about the quote
+## ✨ Features
 
-### Example:
+### 📤 Automatic Highlight Import
+Just share TXT or PDF notes from Boox’s NeoReader to Obsidian. The plugin will:
+- Parse the metadata (title, author, etc.)
+- Create or update a note with that title
+- Insert formatted highlights with callout annotations
+- Pull metadata from Google Books or Open Library
 
+### 📄 Smart PDF Matching
+If a PDF file (from handwriting or document markups) is shared and its name matches the book title, the plugin automatically moves it to the note's attachment folder.
+
+---
+
+## 📝 Annotation Callouts
+
+Use annotated symbols in your Boox comments to trigger styled callouts in Obsidian.
+
+| Symbol | Callout Style | Example Annotation |
+|--------|----------------|--------------------|
+| `!`    | `warning`      | `! Critical Point | This needs attention` |
+| `@`    | `tip`          | `@ Key Idea | Great for implementation` |
+| `?`    | `question`     | `? Clarify this concept` |
+| `^`    | `danger`       | `^ Caution | Conflicting claim` |
+| `~`    | `abstract`     | `~ Summary | Wrap-up idea` |
+
+### Before (on Boox):
+
+2025-05-02 09:45 | Page No.: 22
+Barakah is not about doing more in less time. It’s about aligning with divine principles.
+
+【Annotation】@ Key Principle | Aligns with Islamic ethics
+
+### After (in Obsidian):
+
+```markdown
 > [!quote]
-> Paulo Coelho. "When you want something, all the universe conspires in helping you to achieve it." *The Alchemist*, p. 12.
-> *Added on 5/1/2025, 7:05:00 PM*
+> Mohammed Faris. "Barakah is not about doing more in less time. It's about aligning with divine principles." *The Barakah Effect*, p. 22.
+> *Added on 5/2/2025, 9:45:00 AM*
 
-> [!warning] You need to take note!
-> Powerful and motivating idea
+> [!tip] Key Principle  
+> Aligns with Islamic ethics
 
 
-Prefixes map to Obsidian callouts:
-- `!` = warning
-- `@` = tip
-- `^` = danger
-- `?` = question
-- `/` = success
-- `"` = quote
-- `xx` = example
 
-## 📚 Metadata
+⸻
 
-The plugin uses Google Books to populate metadata like:
-- Title, author
-- Publisher, date
-- ISBN, page count
-- Summary/description
-- Book type (e.g., Fiction, Non-fiction)
+🧾 YAML Metadata
 
-## 💡 Credits
+Automatically added at the top of your notes:
 
-Built with ❤️ by Muhammad Saadiq for enhanced knowledge workflows.
+---
+title: The Barakah Effect
+author: Mohammed A. Faris
+publisher: [Not found]
+publishdate: 2022
+pages: 210
+ISBN10: 1800110065
+ISBN13: 9781800110069
+source: Google Books
+url: https://books.google.com
+date: 2025-05-03T01:10:00Z
+tags: 
+rating: 
+date read: 
+status: 
+how read: 
+highlights: 2025-05-03T01:10:00Z
+modified: 5/2/2025, 6:10 PM
+type: Religion
+purple: 
+---
 
-[👉 **Buy Me a Coffee**](https://buymeacoffee.com/moomtaz?new=1)
+You can customize the YAML section via the plugin settings.
+
+⸻
+
+🧠 Deduplication Logic
+
+Already imported? The plugin skips it.
+Updated annotation? The plugin replaces the old one.
+
+⸻
+
+🚀 Roadmap
+	•	Custom template editing in-app
+	•	Readwise Integration
+	•	Readwise Template Configurator
+	•	Auto-tagging by genre/category
+	•	Thematic auto-linking within genres
+
+⸻
+
+🧑‍💻 Contributing
+
+Coming soon — contributors welcome! For now, submit issues here
+
+⸻
+
+📄 License
+
+MIT © 2025 Muhammad Saadiq
+This plugin is not affiliated with Boox or Onyx International.
+

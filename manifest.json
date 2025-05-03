@@ -4,9 +4,9 @@
   "version": "0.1.5",
   "minAppVersion": "0.15.0",
   "main": "main.js",
-  "description": "Automatically import NeoReader highlights and handwritten pdf notes into Obsidian with citation styles.",
+  "description": "Automatically import NeoReader highlights and handwritten PDF notes into Obsidian with citation styles.",
   "author": "Muhammad Saadiq",
   "authorUrl": "https://github.com/moomtaz/Boox_NeoReader_Obsidian_Sync",
-  "isDesktopOnly": false
+  "isDesktopOnly": false,
   "license": "MIT"
 }

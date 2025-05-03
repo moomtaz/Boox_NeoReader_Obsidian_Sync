@@ -1,14 +1,20 @@
 {
   "name": "boox-sync",
-  "version": "0.1.0",
-  "description": "Automatically import Boox highlights and handwritten notes into Obsidian with citation styles.",
+  "version": "0.1.5",
+  "description": "Automatically import Boox NeoReader highlights and handwritten notes into Obsidian, formatted with citation styles and metadata enrichment.",
   "author": "Muhammad Saadiq",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/moomtaz/Boox_NeoReader_Obsidian_Sync.git"
+  },
+  "main": "main.js",
+  "types": "main.d.ts",
   "scripts": {
     "dev": "rollup --config rollup.config.js --watch",
     "build": "rollup --config rollup.config.js",
-    "deploy": "npm run build && mkdir -p /Users/muhammad_saadiq/Documents/@L-P/Obsidian/ArRahman/.obsidian/plugins/boox-sync && cp main.js manifest.json /Users/muhammad_saadiq/Documents/@L-P/Obsidian/ArRahman/.obsidian/plugins/boox-sync/"
-},
+    "deploy": "npm run build && mkdir -p \"$OBS_PATH\" && cp main.js manifest.json \"$OBS_PATH\""
+  },
   "devDependencies": {
     "@rollup/plugin-node-resolve": "^16.0.1",
     "@rollup/plugin-typescript": "^12.1.2",
