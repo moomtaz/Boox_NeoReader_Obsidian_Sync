@@ -7,10 +7,11 @@
   "scripts": {
     "dev": "rollup --config rollup.config.js --watch",
     "build": "rollup --config rollup.config.js",
-    "deploy": "npm run build && cp main.js /Users/muhammad_saadiq/Documents/@L-P/Obsidian/ArRahman/.obsidian/plugins/boox-sync/ && cp manifest.json /Users/muhammad_saadiq/Documents/@L-P/Obsidian/ArRahman/.obsidian/plugins/boox-sync/"
-  },
+    "deploy": "npm run build && mkdir -p /Users/muhammad_saadiq/Documents/@L-P/Obsidian/ArRahman/.obsidian/plugins/boox-sync && cp main.js manifest.json /Users/muhammad_saadiq/Documents/@L-P/Obsidian/ArRahman/.obsidian/plugins/boox-sync/"
+},
   "devDependencies": {
     "@rollup/plugin-node-resolve": "^16.0.1",
+    "@rollup/plugin-typescript": "^12.1.2",
     "obsidian": "latest",
     "rollup": "^2.79.1",
     "rollup-plugin-typescript2": "^0.31.2",

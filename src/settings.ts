@@ -1,5 +1,6 @@
-// settings.ts
-import { App, PluginSettingTab, Setting } from "obsidian";
+// settings.ts — 2025-05-02
+
+import { App, PluginSettingTab, Setting, TFolder, FuzzySuggestModal } from "obsidian";
 import BooxSync from "./main";
 
 export type CitationStyle = "MLA" | "APA" | "Chicago";
@@ -7,26 +8,59 @@ export type CitationStyle = "MLA" | "APA" | "Chicago";
 export interface BooxSyncSettings {
   booxFolder: string;
   outputFolder: string;
-  moveCompletedTo: string;
   citationStyle: CitationStyle;
   namingConvention: "TitleAuthor" | "TitleOnly";
   importPDFs: boolean;
   enableMetadataFetch: boolean;
   scanIntervalSeconds: number;
-  overwriteTemplate: boolean;
+  highlightSectionTitle: string;
+  includedYamlFields: string[];
+  insertAtTop: boolean;
 }
 
 export const DEFAULT_SETTINGS: BooxSyncSettings = {
   booxFolder: "Templates/Attachments",
   outputFolder: "Books",
-  moveCompletedTo: "Books/Library",
   citationStyle: "MLA",
   namingConvention: "TitleAuthor",
   importPDFs: true,
   enableMetadataFetch: true,
   scanIntervalSeconds: 60,
-  overwriteTemplate: false,
+  highlightSectionTitle: "Highlights",
+  insertAtTop: false,
+  includedYamlFields: [
+    "title", "author", "publisher", "publishdate", "pages",
+    "ISBN10", "ISBN13", "source", "url", "date", "tags",
+    "rating", "date read", "status", "how read",
+    "highlights", "modified", "type"
+  ]
 };
+
+class FolderSuggestModal extends FuzzySuggestModal<TFolder> {
+  constructor(app: App, private onChoose: (folder: TFolder) => void) {
+    super(app);
+  }
+
+  getItems(): TFolder[] {
+    const folders: TFolder[] = [];
+    const walk = (folder: TFolder) => {
+      folders.push(folder);
+      for (const child of folder.children) {
+        if (child instanceof TFolder) walk(child);
+      }
+    };
+    walk(this.app.vault.getRoot());
+    return folders;
+  }
+
+  getItemText(item: TFolder): string {
+    return item.path;
+  }
+
+  onChooseItem(item: TFolder): void {
+    this.onChoose(item);
+  }
+}
 
 export class BooxSyncSettingTab extends PluginSettingTab {
   plugin: BooxSync;
@@ -43,46 +77,35 @@ export class BooxSyncSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Boox Watch Folder")
-      .setDesc("Folder to watch for Boox .txt highlight files")
-      .addText(text =>
-        text
-          .setPlaceholder("Templates/Attachments")
-          .setValue(this.plugin.settings.booxFolder)
-          .onChange(async (value) => {
-            this.plugin.settings.booxFolder = value.trim();
-            await this.plugin.saveSettings();
-          })
-      );
+      .setDesc("Folder to watch for Boox highlight .txt files")
+      .addButton(btn => {
+        btn.setButtonText(this.plugin.settings.booxFolder || "Select Folder");
+        btn.onClick(() => {
+          new FolderSuggestModal(this.app, folder => {
+            this.plugin.settings.booxFolder = folder.path;
+            btn.setButtonText(folder.path);
+            this.plugin.saveSettings();
+          }).open();
+        });
+      });
 
     new Setting(containerEl)
-      .setName("Output Folder for Book Notes")
-      .setDesc("Temporary output location for created markdown files")
-      .addText(text =>
-        text
-          .setPlaceholder("Books")
-          .setValue(this.plugin.settings.outputFolder)
-          .onChange(async (value) => {
-            this.plugin.settings.outputFolder = value.trim();
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Final Destination Folder for Processed Notes")
-      .setDesc("Where completed book notes should be moved")
-      .addText(text =>
-        text
-          .setPlaceholder("Books/Library")
-          .setValue(this.plugin.settings.moveCompletedTo)
-          .onChange(async (value) => {
-            this.plugin.settings.moveCompletedTo = value.trim();
-            await this.plugin.saveSettings();
-          })
-      );
+      .setName("Output Folder")
+      .setDesc("Where to save converted book notes")
+      .addButton(btn => {
+        btn.setButtonText(this.plugin.settings.outputFolder || "Select Folder");
+        btn.onClick(() => {
+          new FolderSuggestModal(this.app, folder => {
+            this.plugin.settings.outputFolder = folder.path;
+            btn.setButtonText(folder.path);
+            this.plugin.saveSettings();
+          }).open();
+        });
+      });
 
     new Setting(containerEl)
       .setName("Citation Style")
-      .setDesc("Choose the citation format to use in notes")
+      .setDesc("Format used for quoted highlights")
       .addDropdown(drop =>
         drop
           .addOption("MLA", "MLA")
@@ -96,8 +119,8 @@ export class BooxSyncSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Note Naming Format")
-      .setDesc("Choose how to name the created note files")
+      .setName("Note Naming Convention")
+      .setDesc("How book notes are named")
       .addDropdown(drop =>
         drop
           .addOption("TitleAuthor", "Title - Author")
@@ -111,7 +134,7 @@ export class BooxSyncSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Import Handwritten PDFs")
-      .setDesc("If enabled, also import Boox handwritten notes saved as PDFs")
+      .setDesc("Enable importing .pdfs from Boox")
       .addToggle(toggle =>
         toggle
           .setValue(this.plugin.settings.importPDFs)
@@ -122,8 +145,8 @@ export class BooxSyncSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Enable Online Metadata Fetch")
-      .setDesc("Use Google Books to auto-fill frontmatter metadata if missing")
+      .setName("Enable Metadata Fetch")
+      .setDesc("Use Google Books to auto-fill metadata")
       .addToggle(toggle =>
         toggle
           .setValue(this.plugin.settings.enableMetadataFetch)
@@ -135,7 +158,7 @@ export class BooxSyncSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Scan Interval (seconds)")
-      .setDesc("How often to scan the watch folder for new files")
+      .setDesc("Interval to scan folder for new files")
       .addText(text =>
         text
           .setPlaceholder("60")
@@ -150,13 +173,42 @@ export class BooxSyncSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Overwrite Template Automatically")
-      .setDesc("Recreate BooxBookTemplate.md every time the plugin loads")
+      .setName("Highlights Section Title")
+      .setDesc("Custom heading for highlight section")
+      .addText(text =>
+        text
+          .setPlaceholder("Highlights")
+          .setValue(this.plugin.settings.highlightSectionTitle)
+          .onChange(async (value) => {
+            this.plugin.settings.highlightSectionTitle = value.trim() || "Highlights";
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("YAML Fields to Include")
+      .setDesc("Comma-separated YAML keys to include in frontmatter")
+      .addText(text =>
+        text
+          .setPlaceholder("title, author, type, etc.")
+          .setValue(this.plugin.settings.includedYamlFields.join(", "))
+          .onChange(async (value) => {
+            this.plugin.settings.includedYamlFields = value
+              .split(",")
+              .map(f => f.trim())
+              .filter(f => f.length > 0);
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Insert Highlights at Top")
+      .setDesc("Whether to insert new highlights before or after existing ones")
       .addToggle(toggle =>
         toggle
-          .setValue(this.plugin.settings.overwriteTemplate)
+          .setValue(this.plugin.settings.insertAtTop)
           .onChange(async (value) => {
-            this.plugin.settings.overwriteTemplate = value;
+            this.plugin.settings.insertAtTop = value;
             await this.plugin.saveSettings();
           })
       );

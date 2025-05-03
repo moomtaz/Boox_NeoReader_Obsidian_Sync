@@ -1,24 +1,34 @@
 // main.ts
-import { App, Plugin, TFile, TFolder, Notice } from "obsidian";
+import { Plugin, TFile, TFolder, normalizePath } from "obsidian";
 import { BooxSyncSettings, DEFAULT_SETTINGS, BooxSyncSettingTab } from "./settings";
 import { parseHighlightFile } from "./parser";
 import { ensureDefaultTemplateExists } from "./bookTemplate";
 
 export default class BooxSync extends Plugin {
   settings!: BooxSyncSettings;
-  scanIntervalId: number | null = null;
+  interval: number | null = null;
 
   async onload() {
     console.log("Boox Sync Plugin loading...");
     await this.loadSettings();
-    await ensureDefaultTemplateExists(this.app);
 
     this.addSettingTab(new BooxSyncSettingTab(this.app, this));
-    this.startPolling();
+
+    // ✅ Ensure the default template exists with correct arguments
+    await ensureDefaultTemplateExists(
+      this.app,
+      "Templates/BooxBookTemplate.md",
+      this.settings
+    );
+
+    this.startWatcher();
   }
 
   onunload() {
-    this.stopPolling();
+    if (this.interval) {
+      clearInterval(this.interval);
+    }
+    console.log("Boox Sync Plugin unloaded.");
   }
 
   async loadSettings() {
@@ -27,58 +37,27 @@ export default class BooxSync extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
-    this.restartPolling();
   }
 
-  startPolling() {
-    this.stopPolling();
-    this.scanForImports(); // Run immediately on load
-    this.scanIntervalId = window.setInterval(
-      () => this.scanForImports(),
-      this.settings.scanIntervalSeconds * 1000
-    );
-  }
+  startWatcher() {
+    if (this.interval) clearInterval(this.interval);
 
-  stopPolling() {
-    if (this.scanIntervalId !== null) {
-      clearInterval(this.scanIntervalId);
-      this.scanIntervalId = null;
-    }
-  }
+    this.interval = window.setInterval(async () => {
+      const folderPath = normalizePath(this.settings.booxFolder);
+      const folder = this.app.vault.getAbstractFileByPath(folderPath);
 
-  restartPolling() {
-    this.startPolling();
-  }
-
-  async scanForImports() {
-    const watchFolder = this.app.vault.getAbstractFileByPath(this.settings.booxFolder);
-    if (!watchFolder || !(watchFolder instanceof TFolder)) {
-      console.warn(`Boox Sync: Folder not found: ${this.settings.booxFolder}`);
-      return;
-    }
-
-    for (const file of watchFolder.children) {
-      if (file instanceof TFile && file.extension === "txt") {
-        try {
-          await parseHighlightFile(this, file);
-        } catch (err) {
-          console.error(`Boox Sync: Failed to process ${file.name}`, err);
-        }
+      if (!(folder instanceof TFolder)) {
+        console.warn(`Boox Sync: Folder not found or not a folder: ${folderPath}`);
+        return;
       }
 
-      if (this.settings.importPDFs && file instanceof TFile && file.extension === "pdf") {
-        await this.linkPDFNote(file);
+      const txtFiles = folder.children.filter(
+        (f): f is TFile => f instanceof TFile && f.extension === "txt"
+      );
+
+      for (const file of txtFiles) {
+        await parseHighlightFile(this.app, this.settings, file);
       }
-    }
-  }
-
-  async linkPDFNote(file: TFile) {
-    const notePath = `${this.settings.outputFolder}/${file.basename}.md`;
-    let bookNote = this.app.vault.getAbstractFileByPath(notePath);
-
-    if (!bookNote) {
-      const content = `# ${file.basename}\n\n## Handwritten Notes\n\n![[${file.path}]]\n`;
-      await this.app.vault.create(notePath, content);
-    }
+    }, this.settings.scanIntervalSeconds * 1000);
   }
 }

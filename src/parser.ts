@@ -1,8 +1,32 @@
-// parser.ts
-import { TFile, normalizePath, Notice, requestUrl } from "obsidian";
-import BooxSync from "./main";
-import { CitationStyle } from "./settings";
+// parser.ts — Updated with Open Library fallback & metadata safety
+import { TFile, normalizePath, Notice, requestUrl, App } from "obsidian";
+import { CitationStyle, BooxSyncSettings } from "./settings";
 import { loadTemplate } from "./bookTemplate";
+
+interface HighlightBlock {
+  section: string;
+  timestamp: string;
+  page: string;
+  highlight: string;
+  annotation: string;
+}
+
+interface ParsedBookMetadata {
+  title: string;
+  author: string;
+  publisher?: string;
+  publishDate?: string;
+  totalPage?: string;
+  ISBN10?: string;
+  ISBN13?: string;
+  source: string;
+  url?: string;
+  description?: string;
+  type?: string;
+  date: string;
+  highlights?: string;
+  modified?: string;
+}
 
 const PREFIX_CALLMAP: Record<string, string> = {
   "!": "warning",
@@ -12,212 +36,248 @@ const PREFIX_CALLMAP: Record<string, string> = {
   "~": "abstract",
   "#": "info",
   "^": "danger",
-  '"': "quote",
+  "\"": "quote",
   "xx": "example"
 };
 
-async function fetchBookMetadata(title: string, author: string) {
-  const query = encodeURIComponent(`intitle:${title} inauthor:${author}`);
-  const url = `https://www.googleapis.com/books/v1/volumes?q=${query}`;
-  try {
-    const response = await requestUrl({ url });
-    const data = response.json;
-    if (!data.items || data.items.length === 0) return null;
-
-    const volume = data.items[0].volumeInfo;
-    const categories = (volume.categories && volume.categories.join(", ")) || "";
-
-    return {
-      title: volume.title || title,
-      author: (volume.authors && volume.authors.join(", ")) || author,
-      publisher: volume.publisher || "",
-      publishDate: volume.publishedDate || "",
-      totalPage: volume.pageCount?.toString() || "",
-      ISBN10: (volume.industryIdentifiers?.find((id: any) => id.type === "ISBN_10")?.identifier) || "",
-      ISBN13: (volume.industryIdentifiers?.find((id: any) => id.type === "ISBN_13")?.identifier) || "",
-      source: "Google Books",
-      url: volume.infoLink || "",
-      description: volume.description || "",
-      type: categories,
-      date: new Date().toISOString().split("T")[0],
-      highlights: ""
-    };
-  } catch (err) {
-    console.error("Failed to fetch metadata:", err);
-    return null;
-  }
-}
-
-export async function parseHighlightFile(plugin: BooxSync, file: TFile): Promise<void> {
-  const content = await plugin.app.vault.read(file);
-  const lines = content.split("\n").map(l => l.trim());
+export async function parseHighlightFile(app: App, settings: BooxSyncSettings, file: TFile): Promise<void> {
+  const content = await app.vault.read(file);
+  const lines = content.split("\n").map(l => l.trim()).filter(Boolean);
 
   const metaLine = lines.shift();
   if (!metaLine) {
-    new Notice(`File ${file.name} is empty or improperly formatted.`);
+    new Notice(`Empty or invalid file: ${file.name}`);
     return;
   }
-  const metaMatch = metaLine.match(/<<(.*?)>>(.*)/);
+
+  const metaMatch = metaLine.match(/^<<(.+?)>>(.*)$/);
   if (!metaMatch) {
-    new Notice(`Invalid highlight file format in ${file.name}`);
+    new Notice(`Invalid format in: ${file.name}`);
     return;
   }
 
   const title = metaMatch[1].trim();
   const author = metaMatch[2].trim();
-  const noteName = plugin.settings.namingConvention === "TitleAuthor" ? `${title} - ${author}` : title;
-  const notePath = normalizePath(`${plugin.settings.outputFolder}/${noteName}.md`);
-  let bookNote = plugin.app.vault.getAbstractFileByPath(notePath);
+  const noteName = settings.namingConvention === "TitleAuthor" ? `${title} - ${author}` : title;
+  const notePath = normalizePath(`${settings.outputFolder}/${noteName}.md`);
+  const highlightSectionTitle = settings.highlightSectionTitle || "Highlights";
 
-  let metadata = null;
-  if (!bookNote && plugin.settings.enableMetadataFetch) {
+  let noteFile = app.vault.getAbstractFileByPath(notePath) as TFile | null;
+  let metadata: ParsedBookMetadata | null = null;
+
+  if (!noteFile && settings.enableMetadataFetch) {
     metadata = await fetchBookMetadata(title, author);
   }
 
-  if (!bookNote) {
-    if (!metadata) {
-      metadata = {
-        title,
-        author,
-        publisher: "",
-        publishDate: "",
-        totalPage: "",
-        ISBN10: "",
-        ISBN13: "",
-        source: "",
-        url: "",
-        description: "",
-        type: "",
-        date: new Date().toISOString().split("T")[0],
-        highlights: ""
-      };
-    }
-    const initial = await loadTemplate(plugin.app, metadata);
-    bookNote = await plugin.app.vault.create(notePath, initial);
-  }
-
-  if (!(bookNote instanceof TFile)) return;
-  let existing = await plugin.app.vault.read(bookNote);
-
-  if (metadata?.description) {
-    const summaryRegex = /(## Summary\n+> \[!abstract\] Summary\s+)(.*)/i;
-    existing = existing.replace(summaryRegex, `$1${metadata.description}`);
-    await plugin.app.vault.modify(bookNote, existing);
-  }
-
-  let currentBlock: string[] = [];
-  const parsedBlocks: string[] = [];
-  for (const line of lines) {
-    if (/^[-]{3,}$/.test(line)) {
-      if (currentBlock.length) parsedBlocks.push(currentBlock.join("\n"));
-      currentBlock = [];
-    } else {
-      currentBlock.push(line);
-    }
-  }
-  if (currentBlock.length) parsedBlocks.push(currentBlock.join("\n"));
-
-  let added = 0;
-  let latestTimestamp = "";
-  for (const block of parsedBlocks) {
-    const parsed = parseBooxBlock(block);
-if (
-  !parsed.highlight ||
-  (existing.includes(parsed.highlight) && existing.includes(parsed.timestamp))
-) continue;
-
-
-    const quote = formatCitation(
-      plugin.settings.citationStyle,
+  if (!metadata) {
+    metadata = {
       title,
       author,
-      parsed.page,
-      parsed.highlight,
-      parsed.timestamp
+      source: "Boox TXT File",
+      date: new Date().toISOString(),
+    };
+  }
+
+  metadata.highlights = new Date().toISOString();
+  metadata.modified = new Date().toLocaleString();
+
+  if (!noteFile) {
+    const stringifiedMetadata = Object.fromEntries(
+      Object.entries(metadata).map(([k, v]) => [k, v?.toString() ?? ""])
     );
-
-    let output = `> [!quote]\n> ${quote}\n> *Added on ${new Date(parsed.timestamp).toLocaleString()}*`;
-
-    if (parsed.annotation) {
-      const prefixMatch = parsed.annotation.match(/^(\^|\/|@|\?|~|#|!|"|xx)/);
-      let prefix = "";
-      let content = parsed.annotation;
-      if (prefixMatch) {
-        prefix = prefixMatch[1];
-        content = parsed.annotation.slice(prefix.length).trim();
-      }
-
-      const calloutType = PREFIX_CALLMAP[prefix] || "note";
-      const [label, annotationBody] = content.split("|").map(p => p.trim());
-      output += `\n\n> [!${calloutType}] ${label}\n> ${annotationBody}`;
-    }
-
-    await plugin.app.vault.append(bookNote, `\n\n${output}\n`);
-    added++;
-
-    if (!latestTimestamp || new Date(parsed.timestamp) > new Date(latestTimestamp)) {
-      latestTimestamp = parsed.timestamp;
-    }
+    const initial = await loadTemplate(app, stringifiedMetadata, settings);
+    noteFile = await app.vault.create(notePath, initial);
   }
 
-  if (added > 0 && latestTimestamp) {
-    const fileContent = await plugin.app.vault.read(bookNote);
-    const updated = fileContent.replace(/(highlights:).*/i, `$1 ${latestTimestamp}`);
-    await plugin.app.vault.modify(bookNote, updated);
-    new Notice(`Added ${added} new highlight(s) to ${noteName}`);
+  const noteContent = await app.vault.read(noteFile);
+  const highlightHeader = `## ${highlightSectionTitle}`;
+  const headerIndex = noteContent.indexOf(highlightHeader);
+
+  let before = noteContent;
+  let after = "";
+  let currentHighlights = "";
+
+  if (headerIndex !== -1) {
+    const [pre, ...rest] = noteContent.split(highlightHeader);
+    before = pre + highlightHeader;
+    const restContent = rest.join(highlightHeader);
+    const nextSectionIndex = restContent.search(/^##\s+/m);
+    currentHighlights = nextSectionIndex === -1 ? restContent : restContent.slice(0, nextSectionIndex);
+    after = nextSectionIndex === -1 ? "" : restContent.slice(nextSectionIndex);
   }
 
-  await plugin.app.vault.delete(file);
+  const newHighlights = extractHighlights(lines);
+const deduped = newHighlights.filter((h) => {
+  const newFormatted = formatHighlight(settings.citationStyle, title, author, h)
+    .replace(/\s+/g, " ") // normalize whitespace
+    .trim();
+  const normalizedCurrent = currentHighlights.replace(/\s+/g, " ");
+  console.log("🔍 Checking highlight:", newFormatted);
+  return !normalizedCurrent.includes(newFormatted);
+});
 
-  const finalPath = normalizePath(`${plugin.settings.moveCompletedTo}/${noteName}.md`);
-  await new Promise(resolve => setTimeout(resolve, 500));
-  const fresh = plugin.app.vault.getAbstractFileByPath(notePath);
-  if (fresh instanceof TFile) {
-    await plugin.app.fileManager.renameFile(fresh, finalPath);
+  if (deduped.length === 0) {
+    new Notice(`No new highlights for ${title}`);
+    return;
+  }
+
+  const formatted = deduped.map(h =>
+    formatHighlight(settings.citationStyle, title, author, h)
+  ).join("\n\n");
+
+  const updatedYaml = noteContent.replace(/^---[\s\S]+?---/, yaml => {
+    const lines = yaml.split("\n").map(line => {
+      if (line.startsWith("highlights:")) return `highlights: ${metadata?.highlights}`;
+      if (line.startsWith("modified:")) return `modified: ${metadata?.modified}`;
+      return line;
+    });
+    return lines.join("\n");
+  });
+
+  const final = settings.insertAtTop
+    ? `${before}\n\n${formatted}\n\n${currentHighlights.trim()}\n${after}`
+    : `${before}\n\n${currentHighlights.trim()}\n\n${formatted}\n${after}`;
+
+console.log("📝 Final note content to write:", final);
+  await app.vault.modify(noteFile,  final);
+  await app.vault.delete(file);
+
+  new Notice(`Added ${deduped.length} new highlight(s) to ${noteName}`);
+}
+
+async function fetchBookMetadata(title: string, author: string): Promise<ParsedBookMetadata | null> {
+  const query = encodeURIComponent(`intitle:${title} inauthor:${author}`);
+  const url = `https://www.googleapis.com/books/v1/volumes?q=${query}`;
+
+  try {
+    const res = await requestUrl({ url });
+    const json = res.json;
+
+    if (!json.items || json.items.length === 0) throw new Error("No results from Google");
+
+    const info = json.items[0].volumeInfo;
+    console.log("📘 Google Volume Info:", info);
+
+    if (!info.publisher || !info.publishedDate || !info.pageCount) {
+      console.warn(`⚠️ Incomplete metadata for "${title}", attempting Open Library fallback...`);
+      const fallback = await fetchFromOpenLibrary(info.industryIdentifiers?.[0]?.identifier);
+      return fallback ?? formatGoogleMetadata(info, title, author);
+    }
+
+    return formatGoogleMetadata(info, title, author);
+  } catch (err) {
+    console.error("❌ Google Books metadata fetch failed:", err);
+    return await fetchFromOpenLibrary(); // fallback attempt without ISBN
   }
 }
 
-function parseBooxBlock(block: string) {
-  const lines = block.split("\n").map(l => l.trim()).filter(Boolean);
-  let section = "", timestamp = "", page = "", highlight = "", annotation = "";
+function formatGoogleMetadata(info: any, title: string, author: string): ParsedBookMetadata {
+  return {
+    title: info.title || title,
+    author: (info.authors && info.authors.join(", ")) || author,
+    publisher: info.publisher ?? "[Not found]",
+    publishDate: info.publishedDate ?? "[Not found]",
+    totalPage: info.pageCount?.toString() ?? "[Not found]",
+    ISBN10: info.industryIdentifiers?.find((id: any) => id.type === "ISBN_10")?.identifier || "",
+    ISBN13: info.industryIdentifiers?.find((id: any) => id.type === "ISBN_13")?.identifier || "",
+    source: "Google Books",
+    url: info.infoLink || "",
+    description: info.description || "",
+    type: (info.categories && info.categories.join(", ")) || "",
+    date: new Date().toISOString(),
+  };
+}
 
-  if (lines[0] && lines[0].includes("| Page No.:")) {
-    const metaLine = lines.shift();
-    if (metaLine) [timestamp, page] = metaLine.split("| Page No.:").map(s => s.trim());
-  } else {
-    section = lines.shift() || "";
-    if (lines[0] && lines[0].includes("| Page No.:")) {
-      const metaLine = lines.shift();
-      if (metaLine) [timestamp, page] = metaLine.split("| Page No.:").map(s => s.trim());
-    }
+async function fetchFromOpenLibrary(isbn?: string): Promise<ParsedBookMetadata | null> {
+  if (!isbn) return null;
+  const url = `https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&jscmd=data&format=json`;
+
+  try {
+    const res = await requestUrl({ url });
+    const json = res.json;
+    const data = json[`ISBN:${isbn}`];
+    if (!data) return null;
+
+    console.log("📚 Open Library Metadata:", data);
+
+    return {
+      title: data.title ?? "[Unknown Title]",
+      author: data.authors?.map((a: any) => a.name).join(", ") ?? "[Unknown Author]",
+      publisher: data.publishers?.map((p: any) => p.name).join(", ") ?? "[Not found]",
+      publishDate: data.publish_date ?? "[Not found]",
+      totalPage: data.number_of_pages?.toString() ?? "[Not found]",
+      ISBN10: isbn.length === 10 ? isbn : "",
+      ISBN13: isbn.length === 13 ? isbn : "",
+      source: "Open Library",
+      url: data.url ?? "",
+      description: data.notes ?? "",
+      type: "",
+      date: new Date().toISOString(),
+    };
+  } catch (err) {
+    console.warn("📕 Open Library fetch failed:", err);
+    return null;
   }
+}
+
+function extractHighlights(lines: string[]): HighlightBlock[] {
+  const blocks: string[][] = [];
+  let current: string[] = [];
 
   for (const line of lines) {
-    if (line.includes("【Annotation】")) {
-      annotation = line.replace("【Annotation】", "").trim();
+    if (/^---+$/.test(line)) {
+      if (current.length) blocks.push(current);
+      current = [];
     } else {
-      highlight += (highlight ? " " : "") + line;
+      current.push(line);
+    }
+  }
+  if (current.length) blocks.push(current);
+
+  return blocks.map(parseHighlightBlock);
+}
+
+function parseHighlightBlock(block: string[]): HighlightBlock {
+  let timestamp = "", page = "", highlight = "", annotation = "";
+
+  if (block[0]?.includes("| Page No.:")) {
+    [timestamp, page] = block[0].split("| Page No.:").map(x => x.trim());
+    block = block.slice(1);
+  }
+
+  for (const line of block) {
+    if (line.includes("【Annotation】")) {
+      annotation = line.split("【Annotation】")[1]?.trim() || "";
+    } else {
+      highlight += (highlight ? " " : "") + line.trim();
     }
   }
 
-  return { section, timestamp, page, highlight: highlight.trim(), annotation };
+  return { section: "", timestamp, page, highlight: highlight.trim(), annotation };
 }
 
-function formatCitation(
-  style: CitationStyle,
-  title: string,
-  author: string,
-  page: string,
-  highlight: string,
-  timestamp: string
-): string {
-  switch (style) {
-    case "APA":
-      return `${author} (${new Date(timestamp).getFullYear()}). *${title}*. \"${highlight}\" p. ${page}.`;
-    case "Chicago":
-      return `${author}, *${title}* (${page}): \"${highlight}\".`;
-    case "MLA":
-    default:
-      return `${author}. \"${highlight}\" *${title}*, p. ${page}.`;
+function formatHighlight(style: CitationStyle, title: string, author: string, data: HighlightBlock): string {
+  const { page, highlight, timestamp, annotation } = data;
+  const dateFormatted = timestamp ? new Date(timestamp).toLocaleString() : "Unknown Date";
+
+  const citation = style === "APA"
+    ? `${author} (${new Date().getFullYear()}). *${title}*. "${highlight}" p. ${page}.`
+    : style === "Chicago"
+    ? `${author}, *${title}* (${page}): "${highlight}".`
+    : `${author}. "${highlight}" *${title}*, p. ${page}.`;
+
+  const quoteBlock = `> [!quote]\n> ${citation}\n> *Added on ${dateFormatted}*`;
+
+  let annotationBlock = "";
+  if (annotation) {
+    const [prefix, comment] = annotation.split("|").map(s => s.trim());
+    const symbol = prefix?.[0] ?? "";
+    const label = prefix?.slice(1).trim() || "Note";
+    const content = comment || prefix?.slice(1).trim() || "No comment";
+    const type = PREFIX_CALLMAP[symbol] || "note";
+
+    annotationBlock = `\n\n> [!${type}] ${label}\n> ${content}`;
   }
+
+  return `${quoteBlock}${annotationBlock}`;
 }

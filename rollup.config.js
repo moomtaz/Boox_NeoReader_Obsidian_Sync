@@ -1,17 +1,17 @@
-import typescript from 'rollup-plugin-typescript2';
-import { nodeResolve } from '@rollup/plugin-node-resolve';
+import typescript from "@rollup/plugin-typescript";
+import { nodeResolve } from "@rollup/plugin-node-resolve";
 
 export default {
-  input: 'src/main.ts',
+  input: "src/main.ts",
   output: {
-    dir: '.',
-    format: 'cjs',
-    sourcemap: 'inline',
-    exports: 'default'
+    dir: ".",
+    format: "cjs",
+    sourcemap: true,
+    exports: "default"
   },
-  external: ['obsidian'],
+  external: ["obsidian"],
   plugins: [
-    nodeResolve({ preferBuiltins: true }),
+    nodeResolve({ browser: true }),
     typescript()
   ]
 };
