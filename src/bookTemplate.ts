@@ -1,92 +1,102 @@
-// bookTemplate.ts
-import { App, normalizePath } from "obsidian";
+// bookTemplate.ts — Loads and injects a Markdown template with enriched metadata
+// Last updated: 2025-05-08 19:20 PDT
+
+// 1. Imports
+import { App, normalizePath, TFile } from "obsidian";
 import { BooxSyncSettings } from "./settings";
+import { ensureFolderExists, resolveFolderPath } from "./utils";
 
-function generateDefaultTemplate(settings: BooxSyncSettings): string {
-  return [
-    "---",
-    ...settings.includedYamlFields.map(key => `${key}:`),
-    "---",
-    "",
-    "[[Favorite Books]] | [[To Read List]]",
-    "",
-    "## Summary",
-    "",
-    "> [!abstract] Summary",
-    "> {description}",
-    "",
-    "## Thesis",
-    "",
-    "> [!question] Main Points",
-    "> What was the author trying to say?",
-    "",
-    "## Antithesis",
-    "",
-    "> [!question] Disagreements",
-    "> Points you took issue with.",
-    "",
-    "## Synthesis",
-    "",
-    "> [!question] Middle Ground",
-    "> How would you reconcile opposing ideas?",
-    "",
-    "## Related",
-    "",
-    "> [!note] Related Topics",
-    "",
-    `## ${settings.highlightSectionTitle}`,
-    ""
-  ].join("\n");
-}
+// 2. Fallback default template
+const DEFAULT_TEMPLATE = `---
+title: {{title}}
+author: {{author}}
+category: {{category}}
+publisher: {{publisher}}
+publishdate: {{publishDate}}
+doi: {{doi}}
+url: {{url}}
+ISBN10: {{ISBN10}}
+ISBN13: {{ISBN13}}
+source: {{source}}
+date: {{date}}
+highlights: {{highlights}}
+modified: {{modified}}
+---
 
-export async function ensureDefaultTemplateExists(app: App, path: string, settings: BooxSyncSettings): Promise<void> {
-  const exists = app.vault.getAbstractFileByPath(normalizePath(path));
+[[Favorite Books]] | [[To Read List]]
+
+## Summary
+
+> [!abstract] Summary  
+ {{description}}
+
+## Thesis
+
+> [!question] What are the main points of the book?  
+> What was the author trying to say?
+
+## Antithesis
+
+> [!question] What are some points you took issue with?  
+> What did the author miss?
+
+## {{highlightSectionTitle}}
+
+
+`;
+
+// 3. Ensure default template file exists
+export async function ensureDefaultTemplateExists(
+  app: App,
+  outputFolder: string,
+  settings: BooxSyncSettings
+): Promise<void> {
+  const fullPath = normalizePath(`${outputFolder}/default-template.md`);
+  const exists = app.vault.getAbstractFileByPath(fullPath);
+
   if (!exists) {
-    const template = generateDefaultTemplate(settings);
-    await app.vault.create(normalizePath(path), template);
+    await ensureFolderExists(app, outputFolder);
+    const section = settings.highlightSectionTitle?.trim() || "Highlights";
+    const filled = DEFAULT_TEMPLATE.replace(/{{highlightSectionTitle}}/g, section);
+    await app.vault.create(fullPath, filled);
+    console.log("[BooxSync][bookTemplate.ts] ✅ Created default template at:", fullPath);
   }
 }
 
-export async function loadTemplate(app: App, metadata: Record<string, string>, settings: BooxSyncSettings): Promise<string> {
-  const yamlLines = [`---`];
+// 4. Load and fill template with metadata
+export async function loadTemplate(
+  app: App,
+  metadata: Record<string, string>,
+  settings: BooxSyncSettings
+): Promise<string> {
+  try {
+    const folderPath = await resolveFolderPath(app, settings.templateFolder);
+    const filePath = normalizePath(`${folderPath}/default-template.md`);
+    const file = app.vault.getAbstractFileByPath(filePath);
 
-  for (const key of settings.includedYamlFields) {
-    const safeValue = metadata[key] ?? "";
-    yamlLines.push(`${key}: ${safeValue}`);
+    let template = file && file instanceof TFile
+      ? await app.vault.read(file)
+      : DEFAULT_TEMPLATE;
+
+    if (!file) {
+      console.warn("[BooxSync][bookTemplate.ts] ⚠️ No template file found, using fallback.");
+    }
+
+    // Replace all placeholders
+    for (const [key, value] of Object.entries(metadata)) {
+      template = template.replaceAll(`{{${key}}}`, value || "");
+    }
+
+    // Ensure highlight section title placeholder is replaced
+    const highlightSection = settings.highlightSectionTitle?.trim() || "Highlights";
+    template = template.replace(/{{highlightSectionTitle}}/g, highlightSection);
+
+    // Clean up unused placeholders
+    template = template.replace(/{{[^}]+}}/g, "");
+
+    return template;
+  } catch (err) {
+    console.error("[BooxSync][bookTemplate.ts] ❌ Error loading template:", err);
+    return DEFAULT_TEMPLATE.replace(/{{highlightSectionTitle}}/g, "Highlights");
   }
-
-  yamlLines.push(`---`);
-
-  return [
-    yamlLines.join("\n"),
-    "",
-    "[[Favorite Books]] | [[To Read List]]",
-    "",
-    "## Summary",
-    "",
-    "> [!abstract] Summary",
-    `> ${metadata.description || "Contents"}`,
-    "",
-    "## Thesis",
-    "",
-    "> [!question] Main Points",
-    "> What was the author trying to say?",
-    "",
-    "## Antithesis",
-    "",
-    "> [!question] Disagreements",
-    "> Points you took issue with.",
-    "",
-    "## Synthesis",
-    "",
-    "> [!question] Middle Ground",
-    "> How would you reconcile opposing ideas?",
-    "",
-    "## Related",
-    "",
-    "> [!note] Related Topics",
-    "",
-    `## ${settings.highlightSectionTitle}`,
-    ""
-  ].join("\n");
 }

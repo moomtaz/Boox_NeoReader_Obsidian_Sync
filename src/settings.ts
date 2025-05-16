@@ -1,216 +1,218 @@
-// settings.ts — 2025-05-02
+// settings.ts — BooxSync Settings Tab
+// Last updated: 2025-05-15 19:50 PDT
 
-import { App, PluginSettingTab, Setting, TFolder, FuzzySuggestModal } from "obsidian";
-import BooxSync from "./main";
+import { PluginSettingTab, Setting, App } from "obsidian";
+import { FolderSuggester } from "./ui/FolderSuggester";
 
-export type CitationStyle = "MLA" | "APA" | "Chicago";
-
+// 1. Define settings shape
 export interface BooxSyncSettings {
-  booxFolder: string;
+  watchFolder: string;
   outputFolder: string;
-  citationStyle: CitationStyle;
-  namingConvention: "TitleAuthor" | "TitleOnly";
-  importPDFs: boolean;
-  enableMetadataFetch: boolean;
-  scanIntervalSeconds: number;
+  templateFolder: string;
+  logFolder: string;
   highlightSectionTitle: string;
-  includedYamlFields: string[];
+  citationStyle: "MLA" | "APA" | "Chicago";
+
+  calloutMap?: Record<string, string>;
+  showPage?: boolean;
+  showTimestamp?: boolean;
+
   insertAtTop: boolean;
+  includePDFs: boolean;
+  enableMetadataFetch: boolean;
+  skipMetadataPrompt: boolean;
+  deleteAfterImport: boolean;
+  logEvents: boolean;
+  developerMode: boolean;
+  enableAutoScan: boolean;
+
+  scanIntervalMs: number;
 }
 
+// 2. Defaults
 export const DEFAULT_SETTINGS: BooxSyncSettings = {
-  booxFolder: "Templates/Attachments",
-  outputFolder: "Books",
-  citationStyle: "MLA",
-  namingConvention: "TitleAuthor",
-  importPDFs: true,
-  enableMetadataFetch: true,
-  scanIntervalSeconds: 60,
+  watchFolder: "Boox/Watch",
+  outputFolder: "Boox/Output",
+  templateFolder: "Boox/Templates",
+  logFolder: "Boox/Logs",
   highlightSectionTitle: "Highlights",
+  citationStyle: "MLA",
+
+  calloutMap: {
+    "!": "tip",
+    "@": "info",
+    "^": "quote",
+    "?": "question",
+    "~": "abstract",
+    "%": "danger",
+    "*": "note"
+  },
+  showPage: true,
+  showTimestamp: true,
+
   insertAtTop: false,
-  includedYamlFields: [
-    "title", "author", "publisher", "publishdate", "pages",
-    "ISBN10", "ISBN13", "source", "url", "date", "tags",
-    "rating", "date read", "status", "how read",
-    "highlights", "modified", "type"
-  ]
+  includePDFs: true,
+  enableMetadataFetch: true,
+  skipMetadataPrompt: false,
+  deleteAfterImport: true,
+  logEvents: true,
+  developerMode: false,
+  enableAutoScan: false,
+
+  scanIntervalMs: 60000,
 };
 
-class FolderSuggestModal extends FuzzySuggestModal<TFolder> {
-  constructor(app: App, private onChoose: (folder: TFolder) => void) {
-    super(app);
-  }
-
-  getItems(): TFolder[] {
-    const folders: TFolder[] = [];
-    const walk = (folder: TFolder) => {
-      folders.push(folder);
-      for (const child of folder.children) {
-        if (child instanceof TFolder) walk(child);
-      }
-    };
-    walk(this.app.vault.getRoot());
-    return folders;
-  }
-
-  getItemText(item: TFolder): string {
-    return item.path;
-  }
-
-  onChooseItem(item: TFolder): void {
-    this.onChoose(item);
-  }
-}
-
+// 3. UI
 export class BooxSyncSettingTab extends PluginSettingTab {
-  plugin: BooxSync;
+  plugin: { settings: BooxSyncSettings; saveSettings: () => Promise<void> };
 
-  constructor(app: App, plugin: BooxSync) {
-    super(app, plugin);
+  constructor(app: App, plugin: { settings: BooxSyncSettings; saveSettings: () => Promise<void> }) {
+    super(app, plugin as any);
     this.plugin = plugin;
   }
 
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl("h2", { text: "Boox Sync Plugin Settings" });
+    containerEl.createEl("h2", { text: "📘 Boox Sync Settings" });
 
-    new Setting(containerEl)
-      .setName("Boox Watch Folder")
-      .setDesc("Folder to watch for Boox highlight .txt files")
-      .addButton(btn => {
-        btn.setButtonText(this.plugin.settings.booxFolder || "Select Folder");
-        btn.onClick(() => {
-          new FolderSuggestModal(this.app, folder => {
-            this.plugin.settings.booxFolder = folder.path;
-            btn.setButtonText(folder.path);
-            this.plugin.saveSettings();
-          }).open();
+    // 4. String fields
+    const stringKeys = [
+      "watchFolder",
+      "outputFolder",
+      "templateFolder",
+      "logFolder",
+      "highlightSectionTitle"
+    ] as const;
+
+    stringKeys.forEach((key) => {
+      new Setting(containerEl)
+        .setName(key.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase()))
+        .setDesc(`Set the ${key}`)
+        .addText((text) => {
+          const input = text
+            .setPlaceholder(key)
+            .setValue(this.plugin.settings[key])
+            .onChange((value) => {
+              this.plugin.settings[key] = value.trim();
+              this.plugin.saveSettings();
+            });
+
+          if (key.includes("Folder")) {
+            const inputEl = input.inputEl;
+            if (inputEl) new FolderSuggester(this.app, inputEl);
+          }
         });
-      });
+    });
 
-    new Setting(containerEl)
-      .setName("Output Folder")
-      .setDesc("Where to save converted book notes")
-      .addButton(btn => {
-        btn.setButtonText(this.plugin.settings.outputFolder || "Select Folder");
-        btn.onClick(() => {
-          new FolderSuggestModal(this.app, folder => {
-            this.plugin.settings.outputFolder = folder.path;
-            btn.setButtonText(folder.path);
-            this.plugin.saveSettings();
-          }).open();
-        });
-      });
-
+    // 5. Citation dropdown
     new Setting(containerEl)
       .setName("Citation Style")
-      .setDesc("Format used for quoted highlights")
-      .addDropdown(drop =>
-        drop
+      .setDesc("Choose quote formatting style")
+      .addDropdown((dropdown) => {
+        dropdown
           .addOption("MLA", "MLA")
           .addOption("APA", "APA")
           .addOption("Chicago", "Chicago")
           .setValue(this.plugin.settings.citationStyle)
-          .onChange(async (value) => {
-            this.plugin.settings.citationStyle = value as CitationStyle;
-            await this.plugin.saveSettings();
-          })
-      );
+          .onChange((value) => {
+            this.plugin.settings.citationStyle = value as "MLA" | "APA" | "Chicago";
+            this.plugin.saveSettings();
+          });
+      });
 
-    new Setting(containerEl)
-      .setName("Note Naming Convention")
-      .setDesc("How book notes are named")
-      .addDropdown(drop =>
-        drop
-          .addOption("TitleAuthor", "Title - Author")
-          .addOption("TitleOnly", "Title Only")
-          .setValue(this.plugin.settings.namingConvention)
-          .onChange(async (value) => {
-            this.plugin.settings.namingConvention = value as "TitleAuthor" | "TitleOnly";
-            await this.plugin.saveSettings();
-          })
-      );
+    // 6. Boolean toggles
+    const toggleKeys = [
+      "insertAtTop",
+      "includePDFs",
+      "enableMetadataFetch",
+      "skipMetadataPrompt",
+      "deleteAfterImport",
+      "logEvents",
+      "developerMode",
+      "enableAutoScan"
+    ] as const;
 
+    toggleKeys.forEach((key) => {
+      new Setting(containerEl)
+        .setName(key.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase()))
+        .setDesc(`Toggle ${key}`)
+        .addToggle((t) => {
+          t.setValue(this.plugin.settings[key])
+            .onChange((value) => {
+              this.plugin.settings[key] = value;
+              this.plugin.saveSettings();
+            });
+        });
+    });
+
+    // 6.b Additional toggle options
     new Setting(containerEl)
-      .setName("Import Handwritten PDFs")
-      .setDesc("Enable importing .pdfs from Boox")
-      .addToggle(toggle =>
+      .setName("Show Page Numbers")
+      .setDesc("Include page numbers in citations")
+      .addToggle((toggle) => {
         toggle
-          .setValue(this.plugin.settings.importPDFs)
-          .onChange(async (value) => {
-            this.plugin.settings.importPDFs = value;
-            await this.plugin.saveSettings();
-          })
-      );
+          .setValue(this.plugin.settings.showPage ?? true)
+          .onChange((value) => {
+            this.plugin.settings.showPage = value;
+            this.plugin.saveSettings();
+          });
+      });
 
     new Setting(containerEl)
-      .setName("Enable Metadata Fetch")
-      .setDesc("Use Google Books to auto-fill metadata")
-      .addToggle(toggle =>
+      .setName("Show Timestamps")
+      .setDesc("Include timestamp in citation footers")
+      .addToggle((toggle) => {
         toggle
-          .setValue(this.plugin.settings.enableMetadataFetch)
-          .onChange(async (value) => {
-            this.plugin.settings.enableMetadataFetch = value;
-            await this.plugin.saveSettings();
-          })
-      );
+          .setValue(this.plugin.settings.showTimestamp ?? true)
+          .onChange((value) => {
+            this.plugin.settings.showTimestamp = value;
+            this.plugin.saveSettings();
+          });
+      });
 
+    // 6.c Optional: Callout map editor
     new Setting(containerEl)
-      .setName("Scan Interval (seconds)")
-      .setDesc("Interval to scan folder for new files")
-      .addText(text =>
-        text
-          .setPlaceholder("60")
-          .setValue(this.plugin.settings.scanIntervalSeconds.toString())
-          .onChange(async (value) => {
+      .setName("Callout Map (Advanced)")
+      .setDesc("Customize the annotation symbol → callout type mapping")
+      .addTextArea((area) => {
+        area
+          .setPlaceholder('{ "!": "tip", "@": "info" }')
+          .setValue(JSON.stringify(this.plugin.settings.calloutMap, null, 2))
+          .onChange((value) => {
+            try {
+              this.plugin.settings.calloutMap = JSON.parse(value);
+              this.plugin.saveSettings();
+            } catch (e) {
+              console.warn("Invalid callout map JSON");
+            }
+          });
+        area.inputEl.rows = 6;
+      });
+
+    // 7. Scan interval (dropdown)
+    new Setting(containerEl)
+      .setName("Auto-Scan Interval")
+      .setDesc("Frequency to auto-scan your Watch folder")
+      .addDropdown((dropdown) => {
+        const intervals: Record<number, string> = {
+          15000: "Every 15 seconds (debug only)",
+          30000: "Every 30 seconds",
+          60000: "Every 1 minute",
+          3600000: "Every hour"
+        };
+        Object.entries(intervals).forEach(([ms, label]) => {
+          dropdown.addOption(ms, label);
+        });
+        dropdown
+          .setValue(String(this.plugin.settings.scanIntervalMs))
+          .onChange((value) => {
             const parsed = parseInt(value);
             if (!isNaN(parsed)) {
-              this.plugin.settings.scanIntervalSeconds = parsed;
-              await this.plugin.saveSettings();
+              this.plugin.settings.scanIntervalMs = parsed;
+              this.plugin.saveSettings();
             }
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Highlights Section Title")
-      .setDesc("Custom heading for highlight section")
-      .addText(text =>
-        text
-          .setPlaceholder("Highlights")
-          .setValue(this.plugin.settings.highlightSectionTitle)
-          .onChange(async (value) => {
-            this.plugin.settings.highlightSectionTitle = value.trim() || "Highlights";
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("YAML Fields to Include")
-      .setDesc("Comma-separated YAML keys to include in frontmatter")
-      .addText(text =>
-        text
-          .setPlaceholder("title, author, type, etc.")
-          .setValue(this.plugin.settings.includedYamlFields.join(", "))
-          .onChange(async (value) => {
-            this.plugin.settings.includedYamlFields = value
-              .split(",")
-              .map(f => f.trim())
-              .filter(f => f.length > 0);
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Insert Highlights at Top")
-      .setDesc("Whether to insert new highlights before or after existing ones")
-      .addToggle(toggle =>
-        toggle
-          .setValue(this.plugin.settings.insertAtTop)
-          .onChange(async (value) => {
-            this.plugin.settings.insertAtTop = value;
-            await this.plugin.saveSettings();
-          })
-      );
+          });
+      });
   }
 }

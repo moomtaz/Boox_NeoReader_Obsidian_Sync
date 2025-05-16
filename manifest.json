@@ -1,12 +1,13 @@
 {
   "id": "boox-sync",
-  "name": "Boox Sync",
-  "version": "0.1.5",
-  "minAppVersion": "0.15.0",
-  "main": "main.js",
-  "description": "Automatically import NeoReader highlights and handwritten PDF notes into Obsidian with citation styles.",
+  "name": "BooxSync",
+  "version": "0.1.7",
+  "minAppVersion": "1.0.0",
+  "description": "Syncs reading highlights from Boox tablets into Obsidian — includes Google Books enrichment, formatting, and structured metadata.",
   "author": "Muhammad Saadiq",
-  "authorUrl": "https://github.com/moomtaz/Boox_NeoReader_Obsidian_Sync",
-  "isDesktopOnly": false,
-  "license": "MIT"
+  "authorUrl": "https://github.com/moomtaz",
+  "repo": "moomtaz/booxsync",
+  "main": "main.js",
+  "scripts": [],
+  "manifest": "manifest.json"
 }

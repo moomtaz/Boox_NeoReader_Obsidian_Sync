@@ -1,5 +1,7 @@
+//rollup.config.js
 import typescript from "@rollup/plugin-typescript";
 import { nodeResolve } from "@rollup/plugin-node-resolve";
+import postcss from "rollup-plugin-postcss"; // 🔥 This is the key plugin
 
 export default {
   input: "src/main.ts",
@@ -12,6 +14,7 @@ export default {
   external: ["obsidian"],
   plugins: [
     nodeResolve({ browser: true }),
-    typescript()
+    typescript(),
+    postcss() // ✅ Comma was missing above
   ]
 };
